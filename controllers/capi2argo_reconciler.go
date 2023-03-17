@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	goErr "errors"
+	"fmt"
 	"os"
 	"strconv"
 
@@ -11,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/cluster-api/util"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -63,6 +65,12 @@ func (r *Capi2Argo) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resul
 		return ctrl.Result{}, err
 	}
 
+	// Fetch CAPI cluster object
+	cluster, err := util.GetClusterFromMetadata(ctx, r.Client, capiSecret.ObjectMeta)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get cluster object from secret: %w", err)
+	}
+
 	// Construct CapiCluster from CapiSecret.
 	capiCluster := NewCapiCluster()
 	err = capiCluster.Unmarshal(&capiSecret)
@@ -80,6 +88,11 @@ func (r *Capi2Argo) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resul
 	if err != nil {
 		log.Error(err, "Failed to convert ArgoCluster to ArgoSecret")
 		return ctrl.Result{}, err
+	}
+
+	// Set class in labels if exists.
+	if cluster.Spec.Topology != nil {
+		argoSecret.Labels["class"] = cluster.Spec.Topology.Class
 	}
 
 	// Represent a possible existing ArgoSecret.
